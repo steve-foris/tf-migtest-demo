@@ -39,6 +39,18 @@ gcloud iam service-accounts create tf-deployer --display-name "Terraform Deploye
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID --member "serviceAccount:tf-deployer@YOUR_PROJECT_ID.iam.gserviceaccount.com" --role "roles/editor"
 gcloud iam service-accounts keys create key.json --iam-account tf-deployer@YOUR_PROJECT_ID.iam.gserviceaccount.com
 export GOOGLE_CREDENTIALS="$(cat key.json)"
+## Bootstrap Project (optional)
+If you have org-level access and a billing account, you can create and prep a fresh project via Makefile. This repo does not destroy GCP projects.
+
+```
+# Required: PROJECT_ID, ORG_ID, BILLING_ACCOUNT
+make bootstrap-project PROJECT_ID=tf-bg-quiz ORG_ID=1234567890 BILLING_ACCOUNT=AAAAAA-BBBBBB-CCCCCC
+
+# Then deploy resources into that project
+make apply PROJECT_ID=tf-bg-quiz BUCKET_NAME=quizcafe-static-unique
+```
+
+The bootstrap step creates the project, links billing, and enables required APIs. Use `make destroy` to remove workload resources; the project remains intact.
 ```
 
 ## Quick start (local)
