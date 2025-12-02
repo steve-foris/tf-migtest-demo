@@ -55,9 +55,6 @@ bootstrap-project:
 	@if [ -z "$(PROJECT_ID)" ] || [ -z "$(BILLING_ACCOUNT)" ]; then \
 		echo "Set PROJECT_ID and BILLING_ACCOUNT"; exit 1; \
 	fi
-	@CREATE_FLAGS="--name=\"QuizCafe BlueGreen\""; \
-	if [ -n "$(ORG_ID)" ]; then CREATE_FLAGS="$$CREATE_FLAGS --organization=\"$(ORG_ID)\""; fi; \
-	if [ -n "$(FOLDER_ID)" ]; then CREATE_FLAGS="$$CREATE_FLAGS --folder=\"$(FOLDER_ID)\""; fi; \
-	gcloud projects create "$(PROJECT_ID)" $$CREATE_FLAGS
+	gcloud projects create "$(PROJECT_ID)" --name="QuizCafe BlueGreen" $(if $(ORG_ID),--organization="$(ORG_ID)") $(if $(FOLDER_ID),--folder="$(FOLDER_ID)")
 	gcloud beta billing projects link "$(PROJECT_ID)" --billing-account="$(BILLING_ACCOUNT)"
 	gcloud services enable compute.googleapis.com storage.googleapis.com iam.googleapis.com --project="$(PROJECT_ID)"
