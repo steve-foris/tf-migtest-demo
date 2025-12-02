@@ -8,7 +8,7 @@ ZONE ?= $(zone)
 
 TFVARS := terraform.tfvars
 
-.PHONY: init plan apply destroy fmt validate output clean
+.PHONY: init plan apply destroy fmt validate output clean swap-blue swap-green
 
 init:
 	terraform init
@@ -42,3 +42,11 @@ clean:
 	@rm -rf .terraform
 	@rm -f terraform.tfstate terraform.tfstate.*
 	@rm -f crash.log
+
+swap-blue:
+	@echo "Switching backend to BLUE"
+	terraform apply -auto-approve -var="active_color=blue" $(if $(PROJECT_ID),-var="project_id=$(PROJECT_ID)") $(if $(BUCKET_NAME),-var="bucket_name=$(BUCKET_NAME)")
+
+swap-green:
+	@echo "Switching backend to GREEN"
+	terraform apply -auto-approve -var="active_color=green" $(if $(PROJECT_ID),-var="project_id=$(PROJECT_ID)") $(if $(BUCKET_NAME),-var="bucket_name=$(BUCKET_NAME)")

@@ -1,5 +1,9 @@
 // Load balancer: backend service, URL map, proxy, forwarding rule
 
+locals {
+  active_group = var.active_color == "green" ? google_compute_instance_group_manager.green.instance_group : google_compute_instance_group_manager.blue.instance_group
+}
+
 resource "google_compute_backend_service" "default" {
   name        = "quizcafe-backend"
   protocol    = "HTTP"
@@ -9,13 +13,8 @@ resource "google_compute_backend_service" "default" {
   health_checks = [google_compute_health_check.http.self_link]
 
   backend {
-    group = google_compute_instance_group_manager.blue.instance_group
+    group = local.active_group
   }
-
-  # To switch to green, change backend group to green MIG
-  # backend {
-  #   group = google_compute_instance_group_manager.green.instance_group
-  # }
 }
 
 resource "google_compute_url_map" "default" {
