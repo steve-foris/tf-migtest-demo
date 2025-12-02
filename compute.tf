@@ -26,6 +26,12 @@ resource "google_compute_instance_template" "blue" {
     source_image = data.google_compute_image.debian.self_link
   }
 
+  scheduling {
+    preemptible         = true
+    automatic_restart   = false
+    on_host_maintenance = "TERMINATE"
+  }
+
   network_interface {
     network    = google_compute_network.vpc.id
     subnetwork = google_compute_subnetwork.subnet.id
@@ -47,6 +53,12 @@ resource "google_compute_instance_template" "green" {
     auto_delete  = true
     boot         = true
     source_image = data.google_compute_image.debian.self_link
+  }
+
+  scheduling {
+    preemptible         = true
+    automatic_restart   = false
+    on_host_maintenance = "TERMINATE"
   }
 
   network_interface {
