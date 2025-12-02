@@ -52,9 +52,12 @@ swap-green:
 	terraform apply -auto-approve -var="active_color=green" $(if $(PROJECT_ID),-var="project_id=$(PROJECT_ID)") $(if $(BUCKET_NAME),-var="bucket_name=$(BUCKET_NAME)")
 
 bootstrap-project:
-	@if [ -z "$(PROJECT_ID)" ] || [ -z "$(ORG_ID)" ] || [ -z "$(BILLING_ACCOUNT)" ]; then \
-		echo "Set PROJECT_ID, ORG_ID, BILLING_ACCOUNT"; exit 1; \
+	@if [ -z "$(PROJECT_ID)" ] || [ -z "$(BILLING_ACCOUNT)" ]; then \
+		echo "Set PROJECT_ID and BILLING_ACCOUNT"; exit 1; \
 	fi
-	gcloud projects create "$(PROJECT_ID)" --name="QuizCafe BlueGreen" --organization="$(ORG_ID)"
+	@CREATE_FLAGS="--name=\"QuizCafe BlueGreen\""; \
+	if [ -n "$(ORG_ID)" ]; then CREATE_FLAGS="$$CREATE_FLAGS --organization=\"$(ORG_ID)\""; fi; \
+	if [ -n "$(FOLDER_ID)" ]; then CREATE_FLAGS="$$CREATE_FLAGS --folder=\"$(FOLDER_ID)\""; fi; \
+	gcloud projects create "$(PROJECT_ID)" $$CREATE_FLAGS
 	gcloud beta billing projects link "$(PROJECT_ID)" --billing-account="$(BILLING_ACCOUNT)"
 	gcloud services enable compute.googleapis.com storage.googleapis.com iam.googleapis.com --project="$(PROJECT_ID)"

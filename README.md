@@ -40,11 +40,15 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID --member "serviceAccount:
 gcloud iam service-accounts keys create key.json --iam-account tf-deployer@YOUR_PROJECT_ID.iam.gserviceaccount.com
 export GOOGLE_CREDENTIALS="$(cat key.json)"
 ## Bootstrap Project (optional)
-If you have org-level access and a billing account, you can create and prep a fresh project via Makefile. This repo does not destroy GCP projects.
+You can create and prep a fresh project via Makefile. If you have an Organization or Folder, you may specify it; otherwise the project will be created without those flags. This repo does not destroy GCP projects.
 
 ```
-# Required: PROJECT_ID, ORG_ID, BILLING_ACCOUNT
+# Required: PROJECT_ID, BILLING_ACCOUNT; optional: ORG_ID or FOLDER_ID
+make bootstrap-project PROJECT_ID=tf-bg-quiz BILLING_ACCOUNT=AAAAAA-BBBBBB-CCCCCC
+# With Org
 make bootstrap-project PROJECT_ID=tf-bg-quiz ORG_ID=1234567890 BILLING_ACCOUNT=AAAAAA-BBBBBB-CCCCCC
+# With Folder
+make bootstrap-project PROJECT_ID=tf-bg-quiz FOLDER_ID=987654321 BILLING_ACCOUNT=AAAAAA-BBBBBB-CCCCCC
 
 # Then deploy resources into that project
 make apply PROJECT_ID=tf-bg-quiz BUCKET_NAME=quizcafe-static-unique
