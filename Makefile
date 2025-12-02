@@ -8,7 +8,7 @@ ZONE ?= $(zone)
 
 TFVARS := terraform.tfvars
 
-.PHONY: init plan apply destroy fmt validate output
+.PHONY: init plan apply destroy fmt validate output clean
 
 init:
 	terraform init
@@ -36,3 +36,9 @@ validate:
 
 output:
 	terraform output
+
+clean:
+	@echo "Removing local Terraform artifacts (.terraform/, tfstate, crash logs)"
+	@rm -rf .terraform
+	@rm -f terraform.tfstate terraform.tfstate.*
+	@rm -f crash.log
