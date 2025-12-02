@@ -25,7 +25,7 @@ variable "bucket_name" {
 variable "machine_type" {
   description = "Instance machine type"
   type        = string
-  default     = "e2-medium"
+  default     = "e2-micro"
 }
 
 variable "instance_count" {
