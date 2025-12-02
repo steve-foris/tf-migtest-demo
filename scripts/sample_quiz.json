@@ -1,0 +1,7 @@
+{
+  "title": "Sample Quiz",
+  "questions": [
+    { "q": "2 + 2?", "choices": ["3", "4"], "answer": 1 },
+    { "q": "Capital of France?", "choices": ["Berlin", "Paris"], "answer": 1 }
+  ]
+}
