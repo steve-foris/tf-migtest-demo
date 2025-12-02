@@ -15,4 +15,21 @@ provider "google" {
   zone    = var.zone
 }
 
-# TODO: add bucket, networking, and any global resources
+# Global resources
+
+# Quiz bucket for hosting static quiz JSON
+resource "google_storage_bucket" "quiz_bucket" {
+  name                        = var.bucket_name
+  location                    = var.region
+  uniform_bucket_level_access = true
+  force_destroy               = true
+}
+
+# Optional: grant public read to objects (commented by default)
+# resource "google_storage_bucket_iam_binding" "public_read" {
+#   bucket = google_storage_bucket.quiz_bucket.name
+#   role   = "roles/storage.objectViewer"
+#   members = [
+#     "allUsers",
+#   ]
+# }

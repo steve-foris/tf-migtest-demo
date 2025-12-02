@@ -1,8 +1,11 @@
-// Placeholder: useful outputs (LB IP, bucket name)
+// Useful outputs (LB IP, bucket name)
 
 output "bucket_name" {
   description = "QuizCafe GCS bucket"
-  value       = var.bucket_name
+  value       = google_storage_bucket.quiz_bucket.name
 }
 
-# TODO: output load balancer external IP
+output "lb_ip" {
+  description = "External IP of HTTP load balancer"
+  value       = google_compute_global_forwarding_rule.http.ip_address
+}
