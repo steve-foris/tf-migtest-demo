@@ -6,7 +6,7 @@ Small GCP + Terraform portfolio sample that deploys QuizCafe as a blue/green Man
 - GCS bucket holds static quiz file(s).
 - Two instance templates (blue / green) or one template with different metadata.
 - Two Managed Instance Groups (or a single MIG using a new instance template for rolling updates).
-- External HTTP(S) Load Balancer with backend pointing to the active MIG.
+- External HTTP Load Balancer (port 80) with backend pointing to the active MIG.
 - Health check ensures only healthy group receives traffic.
 - Switch traffic by updating backend service to point to the other MIG (blue ↔ green).
 
@@ -19,8 +19,7 @@ Small GCP + Terraform portfolio sample that deploys QuizCafe as a blue/green Man
 - outputs.tf       — useful outputs (LB IP, bucket name)
 - modules/         — optional modular resources
 - scripts/         — startup script to fetch quiz file from GCS and run QuizCafe
-    apply.sh
-    destroy.sh
+- Makefile         — init/plan/apply/destroy/swap-blue/swap-green/clean targets
 
 ## Prerequisites
 - GCP project with billing enabled
@@ -56,8 +55,13 @@ machine_type = "e2-medium"
 gsutil mb -p $PROJECT_ID -l $REGION gs://$BUCKET_NAME
 gsutil cp scripts/sample_quiz.json gs://$BUCKET_NAME/quiz.json
 ```
-3. Terraform:
+3. Terraform (via Makefile or raw commands):
 ```
+make init
+make plan PROJECT_ID=$PROJECT_ID BUCKET_NAME=$BUCKET_NAME
+make apply PROJECT_ID=$PROJECT_ID BUCKET_NAME=$BUCKET_NAME
+
+# Or raw Terraform
 terraform init
 terraform plan -var="project_id=$PROJECT_ID" -var="bucket_name=$BUCKET_NAME"
 terraform apply -var="project_id=$PROJECT_ID" -var="bucket_name=$BUCKET_NAME"
@@ -71,7 +75,12 @@ curl http://<LB_EXTERNAL_IP>/  # or /quiz depending on startup script
 Option A — Two MIGs:
 - Create blue and green MIGs each with their own instance template.
 - Deploy new version to the inactive MIG, verify health and functionality.
-- Update backend service to point to the updated MIG (swap traffic).
+- Update backend service to point to the updated MIG (swap traffic). In this repo, use Make targets:
+```
+make swap-green PROJECT_ID=$PROJECT_ID BUCKET_NAME=$BUCKET_NAME
+# later
+make swap-blue PROJECT_ID=$PROJECT_ID BUCKET_NAME=$BUCKET_NAME
+```
 - Optionally scale down the old MIG.
 
 Option B — Rolling update with new instance template:
@@ -102,7 +111,8 @@ Keep a health-check endpoint (e.g., /health) returning HTTP 200 for readiness ch
 
 ## Cleanup
 ```
-terraform destroy -var="project_id=$PROJECT_ID" -var="bucket_name=$BUCKET_NAME"
+make destroy PROJECT_ID=$PROJECT_ID BUCKET_NAME=$BUCKET_NAME
+make clean  # remove local .terraform/ and state files
 gsutil rm -r gs://$BUCKET_NAME
 ```
 
@@ -112,4 +122,4 @@ gsutil rm -r gs://$BUCKET_NAME
 - Add CI/CD pipeline to automate building new instance templates and blue/green swaps.
 - Monitor costs — external load balancer and instance uptime incur charges.
 
-This README is intentionally concise; expand sections with concrete Terraform code, startup script, and CI pipeline docs for a fuller portfolio demo.
+This README is intentionally concise; expand sections with concrete Terraform code, startup script, and CI pipeline docs for a fuller portfolio demo. HTTPS is intentionally omitted for demo simplicity; the load balancer serves HTTP on port 80.
