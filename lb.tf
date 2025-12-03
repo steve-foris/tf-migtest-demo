@@ -12,6 +12,10 @@ resource "google_compute_backend_service" "default" {
 
   health_checks = [google_compute_health_check.http.self_link]
 
+  depends_on = [
+    google_compute_health_check.http,
+  ]
+
   backend {
     group = local.active_group
   }
