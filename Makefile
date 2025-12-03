@@ -45,11 +45,15 @@ clean:
 
 swap-blue:
 	@echo "Switching backend to BLUE"
-	terraform apply -auto-approve -var="active_color=blue" $(if $(PROJECT_ID),-var="project_id=$(PROJECT_ID)") $(if $(BUCKET_NAME),-var="bucket_name=$(BUCKET_NAME)")
+	terraform apply -auto-approve -var="dual_backends=true" -var="active_color=blue" $(if $(PROJECT_ID),-var="project_id=$(PROJECT_ID)") $(if $(BUCKET_NAME),-var="bucket_name=$(BUCKET_NAME)")
+	@echo "Warming up BLUE for 45s" && sleep 45
+	terraform apply -auto-approve -var="dual_backends=false" -var="active_color=blue" $(if $(PROJECT_ID),-var="project_id=$(PROJECT_ID)") $(if $(BUCKET_NAME),-var="bucket_name=$(BUCKET_NAME)")
 
 swap-green:
 	@echo "Switching backend to GREEN"
-	terraform apply -auto-approve -var="active_color=green" $(if $(PROJECT_ID),-var="project_id=$(PROJECT_ID)") $(if $(BUCKET_NAME),-var="bucket_name=$(BUCKET_NAME)")
+	terraform apply -auto-approve -var="dual_backends=true" -var="active_color=green" $(if $(PROJECT_ID),-var="project_id=$(PROJECT_ID)") $(if $(BUCKET_NAME),-var="bucket_name=$(BUCKET_NAME)")
+	@echo "Warming up GREEN for 45s" && sleep 45
+	terraform apply -auto-approve -var="dual_backends=false" -var="active_color=green" $(if $(PROJECT_ID),-var="project_id=$(PROJECT_ID)") $(if $(BUCKET_NAME),-var="bucket_name=$(BUCKET_NAME)")
 
 bootstrap-project:
 	@if [ -z "$(PROJECT_ID)" ] || [ -z "$(BILLING_ACCOUNT)" ]; then \

@@ -55,3 +55,9 @@ variable "active_color" {
     error_message = "active_color must be either 'blue' or 'green'."
   }
 }
+
+variable "dual_backends" {
+  description = "When true, attach both blue and green MIGs to the backend service to warm up the inactive color before finalizing the swap."
+  type        = bool
+  default     = false
+}
