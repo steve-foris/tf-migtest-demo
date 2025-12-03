@@ -27,3 +27,20 @@ resource "google_compute_firewall" "allow_http" {
     "0.0.0.0/0",
   ]
 }
+
+resource "google_compute_firewall" "allow_lb_health" {
+  name    = "quizcafe-allow-lb-health"
+  network = google_compute_network.vpc.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["80"]
+  }
+
+  direction   = "INGRESS"
+  target_tags = ["quizcafe-server"]
+  source_ranges = [
+    "35.191.0.0/16",
+    "130.211.0.0/22",
+  ]
+}

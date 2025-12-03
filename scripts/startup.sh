@@ -15,6 +15,12 @@ if command -v gsutil >/dev/null 2>&1 && [[ -n "$BUCKET_NAME" ]]; then
   gsutil cp "gs://$BUCKET_NAME/quiz.json" /app/quiz.json || true
 fi
 
+# Ensure python3 is available
+if ! command -v python3 >/dev/null 2>&1; then
+  apt-get update -y >/dev/null 2>&1 || true
+  apt-get install -y python3 >/dev/null 2>&1 || true
+fi
+
 cat > /app/server.py << 'PY'
 import http.server, socketserver, os, json, socket
 
