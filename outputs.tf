@@ -11,6 +11,6 @@ output "lb_ip" {
 }
 
 output "app_version" {
-  description = "Active app version (instance template name based on active_color)"
-  value       = var.active_color == "green" ? google_compute_instance_template.green.name : google_compute_instance_template.blue.name
+  description = "App version (shared instance template name)"
+  value       = google_compute_instance_template.app.name
 }

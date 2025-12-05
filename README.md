@@ -20,6 +20,8 @@ Small GCP + Terraform portfolio sample that deploys QuizCafe as a blue/green Man
 - modules/         — optional modular resources
 - scripts/         — startup script to fetch quiz file from GCS and run QuizCafe
 - Makefile         — init/plan/apply/destroy/swap-blue/swap-green/clean targets
+	- New: build-template and rolling-update targets for in-place MIG updates via gcloud
+  - Note: First-time applies may briefly wait for GCP health check readiness (handled by a small Terraform sleep dependency).
 
 ## Prerequisites
 - GCP project with billing enabled
@@ -58,13 +60,13 @@ The bootstrap step creates the project, links billing, and enables required APIs
 ```
 
 ## Quick start (local)
-1. Configure variables (via terraform.tfvars or env):
+1. Configure variables in `terraform.tfvars` (preferred):
 ```
 project_id = "my-gcp-project"
 region     = "us-central1"
 zone       = "us-central1-a"
 bucket_name = "quizcafe-static-<unique>"
-machine_type = "e2-medium"
+machine_type = "e2-micro"
 ```
 2. Upload quiz file to GCS:
 ```
@@ -74,13 +76,13 @@ gsutil cp scripts/sample_quiz.json gs://$BUCKET_NAME/quiz.json
 3. Terraform (via Makefile or raw commands):
 ```
 make init
-make plan PROJECT_ID=$PROJECT_ID BUCKET_NAME=$BUCKET_NAME
-make apply PROJECT_ID=$PROJECT_ID BUCKET_NAME=$BUCKET_NAME
+make plan
+make apply
 
 # Or raw Terraform
 terraform init
-terraform plan -var="project_id=$PROJECT_ID" -var="bucket_name=$BUCKET_NAME"
-terraform apply -var="project_id=$PROJECT_ID" -var="bucket_name=$BUCKET_NAME"
+terraform plan
+terraform apply
 ```
 4. Note the external IP from outputs. Verify app responds:
 ```
@@ -100,15 +102,33 @@ make swap-blue PROJECT_ID=$PROJECT_ID BUCKET_NAME=$BUCKET_NAME
 - Optionally scale down the old MIG.
 
 Option B — Rolling update with new instance template:
-- Create new instance template for the new version.
-- Use MIG rolling update feature:
+ - Build a new instance template with semantic app version (using Makefile):
 ```
-gcloud compute instance-templates create template-v2 --...
-gcloud compute instance-groups managed rolling-action start-update <MIG_NAME> --version=template=template-v2 --zone=<ZONE>
+make build-template PROJECT_ID=<id> ZONE=<zone> COLOR=<blue|green> APP_VERSION=v1.0.1
 ```
-- Monitor health checks and logs until update completes.
+ - Trigger a managed rolling update for the chosen MIG:
+```
+make rolling-update PROJECT_ID=<id> ZONE=<zone> COLOR=<blue|green> TEMPLATE=<created-template-name>
+```
+ - Observe responses live via LB while instances rotate:
+```
+watch -n 2 'curl -s http://$(terraform output -raw lb_ip)'
+```
+ Response example: `Hello from <hostname> (color: green, version: v1.0.1)`
+ - After confirming, swap traffic using the two-phase warm-up target:
+```
+make swap-green
+```
 
 Keep a health-check endpoint (e.g., /health) returning HTTP 200 for readiness checks.
+
+### Warm-up & Zero-Downtime Swaps
+- Two-phase swap in Makefile toggles `dual_backends` to route to both MIGs briefly (45s), then finalizes to a single backend.
+- Prevents transient 502s during backend switch and LB health propagation.
+
+### Observability
+- `terraform output app_version` shows the active instance template-derived version.
+- The app’s root `/` prints `color` and `version` from instance metadata (`color`, `app-version`).
 
 ## Variables (examples)
 - project_id
@@ -131,6 +151,17 @@ make destroy PROJECT_ID=$PROJECT_ID BUCKET_NAME=$BUCKET_NAME
 make clean  # remove local .terraform/ and state files
 gsutil rm -r gs://$BUCKET_NAME
 ```
+
+### Full Teardown (demo labs)
+For quick, end-to-end teardown while keeping template safety during normal applies:
+```
+make destroy-all PROJECT_ID=$PROJECT_ID BUCKET_NAME=$BUCKET_NAME
+```
+This runs:
+- `state-remove-templates` (removes instance templates from Terraform state so prevent_destroy doesn’t block)
+- `destroy-safe` (destroys LB, MIGs, network, bucket, etc.)
+- `destroy-templates` (deletes templates in GCP via gcloud)
+- `clean` (removes local Terraform artifacts)
 
 ## Notes & best practices
 - Use separate service accounts with least privilege for Terraform and instances.

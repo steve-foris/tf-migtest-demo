@@ -14,6 +14,102 @@ data "google_compute_image" "debian" {
   project = split("/", var.image)[0]
 }
 
+resource "google_compute_instance_template" "app" {
+  name_prefix  = "quizcafe-app-"
+  machine_type = var.machine_type
+
+  tags = ["quizcafe-server"]
+
+  disk {
+    auto_delete  = true
+    boot         = true
+    source_image = data.google_compute_image.debian.self_link
+  }
+
+  scheduling {
+    preemptible         = true
+    automatic_restart   = false
+    on_host_maintenance = "TERMINATE"
+  }
+
+  network_interface {
+    network    = google_compute_network.vpc.id
+    subnetwork = google_compute_subnetwork.subnet.id
+    access_config {}
+  }
+
+  metadata_startup_script = file(var.startup_script)
+  metadata                = { for item in local.metadata_items : item.key => item.value }
+
+  lifecycle {
+    # Safer replacements on change: new template first, then delete old one.
+    create_before_destroy = true
+
+    # OPTIONAL: uncomment only if GCP keeps touching metadata in ways you don't care about.
+    # ignore_changes = [
+    #   metadata,
+    # ]
+  }
+}
+
+
+resource "google_compute_health_check" "http" {
+  name                = "quizcafe-hc"
+  check_interval_sec  = 5
+  timeout_sec         = 5
+  healthy_threshold   = 2
+  unhealthy_threshold = 2
+
+  http_health_check {
+    port         = 80
+    request_path = "/"
+  }
+}
+
+resource "google_compute_instance_group_manager" "blue" {
+  name               = "quizcafe-blue-mig"
+  base_instance_name = "quizcafe-blue"
+  zone               = var.zone
+  target_size        = var.instance_count
+
+  version {
+    instance_template = google_compute_instance_template.app.self_link
+  }
+
+  named_port {
+    name = "http"
+    port = 80
+  }
+
+  auto_healing_policies {
+    health_check      = google_compute_health_check.http.self_link
+    initial_delay_sec = 60
+  }
+}
+
+resource "google_compute_instance_group_manager" "green" {
+  name               = "quizcafe-green-mig"
+  base_instance_name = "quizcafe-green"
+  zone               = var.zone
+  target_size        = var.instance_count
+
+  version {
+    instance_template = google_compute_instance_template.app.self_link
+  }
+
+  named_port {
+    name = "http"
+    port = 80
+  }
+
+  auto_healing_policies {
+    health_check      = google_compute_health_check.http.self_link
+    initial_delay_sec = 60
+  }
+}
+
+# Legacy templates retained to avoid destroy conflicts while MIGs roll.
+# These are not referenced by MIGs anymore and are protected from deletion.
 resource "google_compute_instance_template" "blue" {
   name_prefix  = "quizcafe-blue-"
   machine_type = var.machine_type
@@ -39,8 +135,20 @@ resource "google_compute_instance_template" "blue" {
   }
 
   metadata_startup_script = file(var.startup_script)
+  metadata                 = { for item in local.metadata_items : item.key => item.value }
 
-  metadata = { for item in local.metadata_items : item.key => item.value }
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [
+      metadata,
+      metadata_startup_script,
+      machine_type,
+      disk,
+      network_interface,
+      tags,
+      scheduling,
+    ]
+  }
 }
 
 resource "google_compute_instance_template" "green" {
@@ -68,61 +176,18 @@ resource "google_compute_instance_template" "green" {
   }
 
   metadata_startup_script = file(var.startup_script)
+  metadata                 = { for item in local.metadata_items : item.key => item.value }
 
-  metadata = { for item in local.metadata_items : item.key => item.value }
-}
-
-resource "google_compute_health_check" "http" {
-  name                = "quizcafe-hc"
-  check_interval_sec  = 5
-  timeout_sec         = 5
-  healthy_threshold   = 2
-  unhealthy_threshold = 2
-
-  http_health_check {
-    port         = 80
-    request_path = "/"
-  }
-}
-
-resource "google_compute_instance_group_manager" "blue" {
-  name               = "quizcafe-blue-mig"
-  base_instance_name = "quizcafe-blue"
-  zone               = var.zone
-  target_size        = var.instance_count
-
-  version {
-    instance_template = google_compute_instance_template.blue.self_link
-  }
-
-  named_port {
-    name = "http"
-    port = 80
-  }
-
-  auto_healing_policies {
-    health_check      = google_compute_health_check.http.self_link
-    initial_delay_sec = 60
-  }
-}
-
-resource "google_compute_instance_group_manager" "green" {
-  name               = "quizcafe-green-mig"
-  base_instance_name = "quizcafe-green"
-  zone               = var.zone
-  target_size        = var.instance_count
-
-  version {
-    instance_template = google_compute_instance_template.green.self_link
-  }
-
-  named_port {
-    name = "http"
-    port = 80
-  }
-
-  auto_healing_policies {
-    health_check      = google_compute_health_check.http.self_link
-    initial_delay_sec = 60
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [
+      metadata,
+      metadata_startup_script,
+      machine_type,
+      disk,
+      network_interface,
+      tags,
+      scheduling,
+    ]
   }
 }

@@ -61,3 +61,9 @@ variable "dual_backends" {
   type        = bool
   default     = false
 }
+
+variable "prevent_destroy_templates" {
+  description = "Protect instance templates from destroy; set false to allow full teardown"
+  type        = bool
+  default     = true
+}
