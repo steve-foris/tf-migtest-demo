@@ -10,7 +10,11 @@ output "lb_ip" {
   value       = google_compute_global_forwarding_rule.http.ip_address
 }
 
-output "app_version" {
-  description = "App version (shared instance template name)"
-  value       = google_compute_instance_template.app.name
+output "app_template_names" {
+  description = "Instance template names for blue/green"
+  value = {
+    for k, t in google_compute_instance_template.color :
+    k => t.name
+  }
 }
+

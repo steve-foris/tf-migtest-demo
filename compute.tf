@@ -7,6 +7,20 @@ locals {
       value = var.bucket_name
     },
   ]
+
+  # Configure blue/green MIGs + templates
+  colors = {
+    blue = {
+      name_prefix        = "quizcafe-blue-"
+      mig_name           = "quizcafe-blue-mig"
+      base_instance_name = "quizcafe-blue"
+    }
+    green = {
+      name_prefix        = "quizcafe-green-"
+      mig_name           = "quizcafe-green-mig"
+      base_instance_name = "quizcafe-green"
+    }
+  }
 }
 
 data "google_compute_image" "debian" {
@@ -14,11 +28,13 @@ data "google_compute_image" "debian" {
   project = split("/", var.image)[0]
 }
 
-resource "google_compute_instance_template" "app" {
-  name_prefix  = "quizcafe-app-"
-  machine_type = var.machine_type
+# One instance template per color (blue/green)
+resource "google_compute_instance_template" "color" {
+  for_each    = local.colors
+  name_prefix = each.value.name_prefix
 
-  tags = ["quizcafe-server"]
+  machine_type = var.machine_type
+  tags         = ["quizcafe-server"]
 
   disk {
     auto_delete  = true
@@ -39,19 +55,18 @@ resource "google_compute_instance_template" "app" {
   }
 
   metadata_startup_script = file(var.startup_script)
-  metadata                = { for item in local.metadata_items : item.key => item.value }
+
+  # Common metadata + per-color metadata
+  metadata = merge(
+    { color = each.key },
+    { for item in local.metadata_items : item.key => item.value }
+  )
 
   lifecycle {
-    # Safer replacements on change: new template first, then delete old one.
+    # Safe replacement on change
     create_before_destroy = true
-
-    # OPTIONAL: uncomment only if GCP keeps touching metadata in ways you don't care about.
-    # ignore_changes = [
-    #   metadata,
-    # ]
   }
 }
-
 
 resource "google_compute_health_check" "http" {
   name                = "quizcafe-hc"
@@ -66,14 +81,17 @@ resource "google_compute_health_check" "http" {
   }
 }
 
-resource "google_compute_instance_group_manager" "blue" {
-  name               = "quizcafe-blue-mig"
-  base_instance_name = "quizcafe-blue"
+# One MIG definition, parameterised by color
+resource "google_compute_instance_group_manager" "color" {
+  for_each           = local.colors
+
+  name               = each.value.mig_name
+  base_instance_name = each.value.base_instance_name
   zone               = var.zone
   target_size        = var.instance_count
 
   version {
-    instance_template = google_compute_instance_template.app.self_link
+    instance_template = google_compute_instance_template.color[each.key].self_link
   }
 
   named_port {
@@ -84,110 +102,5 @@ resource "google_compute_instance_group_manager" "blue" {
   auto_healing_policies {
     health_check      = google_compute_health_check.http.self_link
     initial_delay_sec = 60
-  }
-}
-
-resource "google_compute_instance_group_manager" "green" {
-  name               = "quizcafe-green-mig"
-  base_instance_name = "quizcafe-green"
-  zone               = var.zone
-  target_size        = var.instance_count
-
-  version {
-    instance_template = google_compute_instance_template.app.self_link
-  }
-
-  named_port {
-    name = "http"
-    port = 80
-  }
-
-  auto_healing_policies {
-    health_check      = google_compute_health_check.http.self_link
-    initial_delay_sec = 60
-  }
-}
-
-# Legacy templates retained to avoid destroy conflicts while MIGs roll.
-# These are not referenced by MIGs anymore and are protected from deletion.
-resource "google_compute_instance_template" "blue" {
-  name_prefix  = "quizcafe-blue-"
-  machine_type = var.machine_type
-
-  tags = ["quizcafe-server"]
-
-  disk {
-    auto_delete  = true
-    boot         = true
-    source_image = data.google_compute_image.debian.self_link
-  }
-
-  scheduling {
-    preemptible         = true
-    automatic_restart   = false
-    on_host_maintenance = "TERMINATE"
-  }
-
-  network_interface {
-    network    = google_compute_network.vpc.id
-    subnetwork = google_compute_subnetwork.subnet.id
-    access_config {}
-  }
-
-  metadata_startup_script = file(var.startup_script)
-  metadata                 = { for item in local.metadata_items : item.key => item.value }
-
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes  = [
-      metadata,
-      metadata_startup_script,
-      machine_type,
-      disk,
-      network_interface,
-      tags,
-      scheduling,
-    ]
-  }
-}
-
-resource "google_compute_instance_template" "green" {
-  name_prefix  = "quizcafe-green-"
-  machine_type = var.machine_type
-
-  tags = ["quizcafe-server"]
-
-  disk {
-    auto_delete  = true
-    boot         = true
-    source_image = data.google_compute_image.debian.self_link
-  }
-
-  scheduling {
-    preemptible         = true
-    automatic_restart   = false
-    on_host_maintenance = "TERMINATE"
-  }
-
-  network_interface {
-    network    = google_compute_network.vpc.id
-    subnetwork = google_compute_subnetwork.subnet.id
-    access_config {}
-  }
-
-  metadata_startup_script = file(var.startup_script)
-  metadata                 = { for item in local.metadata_items : item.key => item.value }
-
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes  = [
-      metadata,
-      metadata_startup_script,
-      machine_type,
-      disk,
-      network_interface,
-      tags,
-      scheduling,
-    ]
   }
 }

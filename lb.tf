@@ -1,8 +1,12 @@
 // Load balancer: backend service, URL map, proxy, forwarding rule
 
 locals {
-  active_group   = var.active_color == "green" ? google_compute_instance_group_manager.green.instance_group : google_compute_instance_group_manager.blue.instance_group
-  inactive_group = var.active_color == "green" ? google_compute_instance_group_manager.blue.instance_group : google_compute_instance_group_manager.green.instance_group
+  blue_group  = google_compute_instance_group_manager.color["blue"].instance_group
+  green_group = google_compute_instance_group_manager.color["green"].instance_group
+
+  active_group   = var.active_color == "green" ? local.green_group : local.blue_group
+  inactive_group = var.active_color == "green" ? local.blue_group : local.green_group
+
   backend_groups = var.dual_backends ? [local.active_group, local.inactive_group] : [local.active_group]
 }
 

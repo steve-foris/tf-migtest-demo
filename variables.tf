@@ -34,6 +34,18 @@ variable "instance_count" {
   default     = 2
 }
 
+variable "max_surge" {
+  description = "Default max surge for rolling updates."
+  type        = number
+  default     = 1
+}
+
+variable "max_unavailable" {
+  description = "Default max unavailable for rolling updates."
+  type        = number
+  default     = 0
+}
+
 variable "image" {
   description = "Base image family or custom image for instances"
   type        = string
@@ -65,5 +77,5 @@ variable "dual_backends" {
 variable "prevent_destroy_templates" {
   description = "Protect instance templates from destroy; set false to allow full teardown"
   type        = bool
-  default     = true
+  default     = false
 }
