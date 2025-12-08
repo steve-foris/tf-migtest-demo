@@ -83,7 +83,7 @@ resource "google_compute_health_check" "http" {
 
 # One MIG definition, parameterised by color
 resource "google_compute_instance_group_manager" "color" {
-  for_each           = local.colors
+  for_each = local.colors
 
   name               = each.value.mig_name
   base_instance_name = each.value.base_instance_name
@@ -91,6 +91,7 @@ resource "google_compute_instance_group_manager" "color" {
   target_size        = var.instance_count
 
   version {
+    # initial template – Terraform's "bootstrap" truth
     instance_template = google_compute_instance_template.color[each.key].self_link
   }
 
@@ -102,5 +103,11 @@ resource "google_compute_instance_group_manager" "color" {
   auto_healing_policies {
     health_check      = google_compute_health_check.http.self_link
     initial_delay_sec = 60
+  }
+
+  lifecycle {
+    # Let gcloud change the MIG's template during rolling updates
+    # without Terraform trying to "fix" it back.
+    ignore_changes = [version]
   }
 }

@@ -68,7 +68,24 @@ destroy:
 	terraform destroy -auto-approve \
 		$(if $(PROJECT_ID),-var="project_id=$(PROJECT_ID)") \
 		$(if $(BUCKET_NAME),-var="bucket_name=$(BUCKET_NAME)")
+	$(MAKE) destroy-templates PROJECT_ID=$(PROJECT_ID)		
 	$(MAKE) destroy-verify PROJECT_ID=$(PROJECT_ID)
+
+destroy-templates:
+	@if [ -z "$(PROJECT_ID)" ]; then echo "Set PROJECT_ID"; exit 1; fi
+	@echo "Deleting instance templates in $(PROJECT_ID)"
+	@names=$$(gcloud compute instance-templates list \
+	  --project="$(PROJECT_ID)" \
+	  --format='value(name)' || true); \
+	if [ -z "$$names" ]; then \
+	  echo "No  ${PROJECT_ID} templates found"; \
+	else \
+	  for tpl in $$names; do \
+	    echo "Deleting $$tpl"; \
+	    gcloud compute instance-templates delete "$$tpl" --project="$(PROJECT_ID)" --quiet || true; \
+	  done; \
+	fi
+
 
 destroy-verify:
 	@echo "Verifying destruction in project: $(PROJECT_ID)"
@@ -92,6 +109,11 @@ destroy-verify:
 	@if gcloud compute instance-groups list --project=$(PROJECT_ID) --format='value(name)' | grep . ; then \
 		echo "❌ Instance groups still exist!"; exit 1; \
 	else echo "✔ No instance groups found."; fi
+
+	# Instance templates
+	@if gcloud compute instance-templates list --project=$(PROJECT_ID) --format='value(name)' | grep . ; then \
+		echo "❌ Instance templates still exist!"; exit 1; \
+	else echo "✔ No instance templates found."; fi
 
 	# Load balancer forwarding rules
 	@if gcloud compute forwarding-rules list --project=$(PROJECT_ID) --global --format='value(name)' | grep . ; then \
@@ -218,21 +240,26 @@ rolling-update:
 		--version=template="$(TEMPLATE)"
 
 # Show MIG and per-instance status.
-# Usage:
-#   make mig-status PROJECT_ID=... ZONE=us-central1-a COLOR=blue
 mig-status:
 	@if [ -z "$(PROJECT_ID)" ]; then echo "Set PROJECT_ID"; exit 1; fi
-	@if [ -z "$(ZONE)" ]; then echo "Set ZONE"; exit 1; fi
-	@if [ -z "$(COLOR)" ]; then echo "Set COLOR=blue|green"; exit 1; fi
-	@sh -c 'set -e; \
-	  mig="quizcafe-$(COLOR)-mig"; \
-	  echo "Status for $$mig"; \
-	  gcloud compute instance-groups managed describe "$$mig" \
-	    --project="$(PROJECT_ID)" --zone="$(ZONE)" \
-	    --format="table(name, status.isStable, currentActions, versions)"; \
+	@echo "=== Detecting active color via Load Balancer ==="; \
+	  ip=$$(terraform output -raw lb_ip 2>/dev/null || true); \
+	  if [ -z "$$ip" ]; then \
+	    echo "❌ lb_ip output not available. Did terraform apply succeed?"; \
+	  else \
+	    resp=$$(curl -s http://$$ip/ || true); \
+	    color=$$(printf '%s\n' "$$resp" | sed -n 's/.*color: \([a-zA-Z]\+\).*/\1/p'); \
+	    if [ -n "$$color" ]; then \
+	      echo "✅ Active color (from LB/app): $$color"; \
+	    else \
+	      echo "⚠ Could not parse active color from LB response."; \
+	    fi; \
+	    echo "LB IP: $$ip"; \
+	    echo "LB response:"; \
+	    printf '%s\n' "$$resp"; \
+	  fi; \
 	  echo; \
-	  echo "Instances:"; \
-	  gcloud compute instance-groups managed list-instances "$$mig" \
-	    --project="$(PROJECT_ID)" --zone="$(ZONE)" \
-	    --format="table(instance, currentAction, version.targetVersion, status)" \
-	'
+	  echo "=== Managed instance groups ==="; \
+	  gcloud compute instance-groups managed list \
+	    --project="$(PROJECT_ID)" \
+	    --format='table(name:label=MIG, location:label=LOCATION, targetSize:label=TARGET_SIZE, size:label=READY, instanceTemplate:label=TEMPLATE)'
