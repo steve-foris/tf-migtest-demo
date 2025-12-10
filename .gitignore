@@ -14,3 +14,7 @@ override.tf.json
 # Providers compiled binaries or caches
 .terraformrc
 terraform.rc
+
+#Ignore .vscode/
+.vscode/*
+workworkspace.code-workspace

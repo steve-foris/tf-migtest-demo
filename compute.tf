@@ -1,22 +1,15 @@
 // Compute: instance templates (blue/green), MIGs, autoscaling
 
 locals {
-  metadata_items = [
-    {
-      key   = "bucket-name"
-      value = var.bucket_name
-    },
-  ]
-
   # Configure blue/green MIGs + templates
   colors = {
     blue = {
-      mig_name           = "quizcafe-blue-mig"
-      base_instance_name = "quizcafe-blue"
+      mig_name           = "migtest-blue-mig"
+      base_instance_name = "migtest-blue"
     }
     green = {
-      mig_name           = "quizcafe-green-mig"
-      base_instance_name = "quizcafe-green"
+      mig_name           = "migtest-green-mig"
+      base_instance_name = "migtest-green"
     }
   }
 }
@@ -27,12 +20,11 @@ data "google_compute_image" "debian" {
   project = split("/", var.image)[0]
 }
 
-# One app version template to roll out
 resource "google_compute_instance_template" "app" {
-  name_prefix  = "quizcafe-app-"
+  name  = "migtest-app-base"
   machine_type = var.machine_type
 
-  tags = ["quizcafe-server"]
+  tags = ["migtest-app-server"]
 
   disk {
     auto_delete  = true
@@ -41,9 +33,12 @@ resource "google_compute_instance_template" "app" {
   }
 
   scheduling {
-    preemptible         = var.preemptible
-    automatic_restart   = false
-    on_host_maintenance = "TERMINATE"
+    preemptible = var.preemptible
+
+    # Preemptible: cannot auto-restart, must TERMINATE on host maintenance
+    # Non-preemptible: can auto-restart, must MIGRATE on host maintenance (for e2)
+    automatic_restart   = var.preemptible ? false : true
+    on_host_maintenance = var.preemptible ? "TERMINATE" : "MIGRATE"
   }
 
   network_interface {
@@ -54,18 +49,18 @@ resource "google_compute_instance_template" "app" {
 
   metadata_startup_script = file(var.startup_script)
 
-  metadata = {
-    for item in local.metadata_items : item.key => item.value
-  }
-
   lifecycle {
-    # Safer replacement when TF ever has to change it
-    create_before_destroy = true
+    # IMPORTANT: don't try to recreate the base template when the script changes.
+    # Rolling updates are handled via versioned templates outside Terraform.
+    ignore_changes = [
+      metadata_startup_script
+    ]
   }
 }
 
+
 resource "google_compute_health_check" "http" {
-  name                = "quizcafe-hc"
+  name                = "migtest-app-hc"
   check_interval_sec  = 5
   timeout_sec         = 5
   healthy_threshold   = 2
@@ -87,7 +82,7 @@ resource "google_compute_instance_group_manager" "color" {
   target_size        = var.instance_count
 
   version {
-    # Bootstrap template only – gcloud will later point this to quizcafe-app-vX-*
+    # Bootstrap template only – gcloud will later point this to migtest-app-vX-*
     instance_template = google_compute_instance_template.app.self_link
   }
 

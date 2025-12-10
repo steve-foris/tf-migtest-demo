@@ -22,7 +22,7 @@ resource "time_sleep" "wait_for_hc" {
 }
 
 resource "google_compute_backend_service" "default" {
-  name        = "quizcafe-backend"
+  name        = "migtest-app-backend"
   protocol    = "HTTP"
   port_name   = "http"
   timeout_sec = 10
@@ -42,17 +42,17 @@ resource "google_compute_backend_service" "default" {
 }
 
 resource "google_compute_url_map" "default" {
-  name            = "quizcafe-urlmap"
+  name            = "migtest-app-urlmap"
   default_service = google_compute_backend_service.default.self_link
 }
 
 resource "google_compute_target_http_proxy" "default" {
-  name    = "quizcafe-http-proxy"
+  name    = "migtest-app-http-proxy"
   url_map = google_compute_url_map.default.self_link
 }
 
 resource "google_compute_global_forwarding_rule" "http" {
-  name       = "quizcafe-http-fr"
+  name       = "migtest-app-http-fr"
   target     = google_compute_target_http_proxy.default.self_link
   port_range = "80"
 }

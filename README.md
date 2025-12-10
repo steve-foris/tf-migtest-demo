@@ -1,172 +1,182 @@
-# quizcafe-terraform-bluegreen
+# tf-migtest-demo-terraform-bluegreen
 
-Small GCP + Terraform portfolio sample that deploys QuizCafe as a blue/green Managed Instance Group (MIG) with a static quiz JSON hosted in a Google Cloud Storage bucket. Purpose: demonstrate IaC, GCP resources (MIG, instance template, load balancer, health checks, bucket), and a simple blue/green swap workflow.
+A clean, production-style GCP + Terraform blue/green Managed Instance Group (MIG) deployment demo. This project showcases:
 
-## Architecture (high level)
-- GCS bucket holds static quiz file(s).
-- Two instance templates (blue / green) or one template with different metadata.
-- Two Managed Instance Groups (or a single MIG using a new instance template for rolling updates).
-- External HTTP Load Balancer (port 80) with backend pointing to the active MIG.
-- Health check ensures only healthy group receives traffic.
-- Switch traffic by updating backend service to point to the other MIG (blue ↔ green).
+- Infrastructure-as-Code with Terraform
+- GCP Managed Instance Groups with rolling updates
+- External HTTP Load Balancer with health checks
+- Zero-downtime blue/green traffic switching
+- Automated instance-template versioning via Makefile + gcloud
+- Realistic deployment workflow similar to production systems
 
-## Repo layout
-- main.tf          — provider, global resources (bucket, networking)
-- network.tf       — VPC, subnet, firewall rules
-- compute.tf       — instance templates, MIGs, autoscaling
-- lb.tf            — health check, backend service, forwarding rule
-- variables.tf     — configurable inputs
-- outputs.tf       — useful outputs (LB IP, bucket name)
-- modules/         — optional modular resources
-- scripts/         — startup script to fetch quiz file from GCS and run QuizCafe
-- Makefile         — init/plan/apply/destroy/swap-blue/swap-green/clean targets
-	- New: build-template and rolling-update targets for in-place MIG updates via gcloud
-  - Note: First-time applies may briefly wait for GCP health check readiness (handled by a small Terraform sleep dependency).
+No buckets, no static assets - this demo focuses purely on compute + LB behavior, which keeps the architecture clean and easy to reason about.
 
-## Prerequisites
-- GCP project with billing enabled
-- gcloud SDK and gsutil installed and authenticated
+-------------------------------------------------------------------------------
+
+ARCHITECTURE OVERVIEW
+
+This project deploys:
+
+- One Terraform-managed baseline instance template
+- Two Managed Instance Groups:
+    migtest-blue-mig
+    migtest-green-mig
+- Global HTTP Load Balancer with forwarding rule and backend service
+- Health check to ensure LB only routes traffic to healthy instances
+- active_color variable determines which MIG receives traffic
+- Blue/green swap performed via Terraform + Makefile automation
+- Rolling updates performed via gcloud using newly-built templates
+
+This mirrors real production environments, where Terraform defines the topology and external tooling performs version rollouts.
+
+-------------------------------------------------------------------------------
+
+REPO LAYOUT
+.
+├── main.tf                provider + global settings
+├── network.tf             VPC, subnet, firewall rules
+├── compute.tf             instance templates, MIG configs
+├── lb.tf                  health check, backend, forwarding rule
+├── variables.tf           configurable inputs
+├── outputs.tf             LB IP, curl command, active_color, MIG template names
+├── scripts/startup.sh     simple HTTP server (prints hostname, color, version)
+├── Makefile               automation for deploy, swap, rolling updates
+├── modules/               optional module stubs
+└── view_gc_state.sh       A tool to monitor state of GCP resources.
+
+MAKEFILE FEATURES
+- make init / plan / up / down / clean
+- make swap-lb: smart blue/green LB switch with warm-up
+- make build-template APP_VERSION=vN
+- make rolling-update TEMPLATE=name
+    (auto-detects active MIG; updates the inactive side)
+- make bootstrap-project PROJECT_ID=... BILLING_ACCOUNT=...
+    creates new GCP project, links billing, enables APIs
+
+-------------------------------------------------------------------------------
+
+PREREQUISITES
+- A GCP account with billing enabled
+- gcloud SDK installed and authenticated
 - Terraform v1.x
-- Enable required APIs: compute.googleapis.com, storage.googleapis.com, iam.googleapis.com
-- A service account (or use user credentials) with roles: roles/compute.admin, roles/iam.serviceAccountUser, roles/storage.admin, roles/compute.networkAdmin, roles/compute.loadBalancerAdmin
+- Required GCP APIs:
+    compute.googleapis.com
+    iam.googleapis.com
+- IAM permissions:
+    roles/compute.admin
+    roles/compute.networkAdmin
+    roles/compute.loadBalancerAdmin
+    roles/iam.serviceAccountUser
 
-Example enable APIs:
-```
-gcloud services enable compute.googleapis.com storage.googleapis.com iam.googleapis.com
-```
+Enable APIs:
+    gcloud services enable compute.googleapis.com iam.googleapis.com
 
-Create service account (example):
-```
-gcloud iam service-accounts create tf-deployer --display-name "Terraform Deployer"
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID --member "serviceAccount:tf-deployer@YOUR_PROJECT_ID.iam.gserviceaccount.com" --role "roles/editor"
-gcloud iam service-accounts keys create key.json --iam-account tf-deployer@YOUR_PROJECT_ID.iam.gserviceaccount.com
-export GOOGLE_CREDENTIALS="$(cat key.json)"
-## Bootstrap Project (optional)
-You can create and prep a fresh project via Makefile. If you have an Organization or Folder, you may specify it; otherwise the project will be created without those flags. This repo does not destroy GCP projects.
+-------------------------------------------------------------------------------
 
-```
-# Required: PROJECT_ID, BILLING_ACCOUNT; optional: ORG_ID or FOLDER_ID
-make bootstrap-project PROJECT_ID=tf-bg-quiz BILLING_ACCOUNT=AAAAAA-BBBBBB-CCCCCC
-# With Org
-make bootstrap-project PROJECT_ID=tf-bg-quiz ORG_ID=1234567890 BILLING_ACCOUNT=AAAAAA-BBBBBB-CCCCCC
-# With Folder
-make bootstrap-project PROJECT_ID=tf-bg-quiz FOLDER_ID=987654321 BILLING_ACCOUNT=AAAAAA-BBBBBB-CCCCCC
+BOOTSTRAP A FRESH PROJECT
+Use Makefile to create + prepare a new project:
+    make bootstrap-project PROJECT_ID=tf-migtest-demo BILLING_ACCOUNT=AAAAAA-BBBBBB-CCCCCC
 
-# Then deploy resources into that project
-make apply PROJECT_ID=tf-bg-quiz BUCKET_NAME=quizcafe-static-unique
-```
+This creates the project, links billing, and enables required APIs.
 
-The bootstrap step creates the project, links billing, and enables required APIs. Use `make destroy` to remove workload resources; the project remains intact.
-```
+-------------------------------------------------------------------------------
 
-## Quick start (local)
-1. Configure variables in `terraform.tfvars` (preferred):
-```
-project_id = "my-gcp-project"
-region     = "us-central1"
-zone       = "us-central1-a"
-bucket_name = "quizcafe-static-<unique>"
-machine_type = "e2-micro"
-```
-2. Upload quiz file to GCS:
-```
-gsutil mb -p $PROJECT_ID -l $REGION gs://$BUCKET_NAME
-gsutil cp scripts/sample_quiz.json gs://$BUCKET_NAME/quiz.json
-```
-3. Terraform (via Makefile or raw commands):
-```
-make init
-make plan
-make apply
+QUICK START
 
-# Or raw Terraform
-terraform init
-terraform plan
-terraform apply
-```
-4. Note the external IP from outputs. Verify app responds:
-```
-curl http://<LB_EXTERNAL_IP>/  # or /quiz depending on startup script
-```
+1. Configure terraform.tfvars:
+project_id    = "tf-migtest-demo"
+region        = "us-west1"
+zone          = "us-west1-b"
+machine_type  = "e2-micro"
+preemptible   = true
 
-## Blue/Green deployment workflow
-Option A — Two MIGs:
-- Create blue and green MIGs each with their own instance template.
-- Deploy new version to the inactive MIG, verify health and functionality.
-- Update backend service to point to the updated MIG (swap traffic). In this repo, use Make targets:
-```
-make swap-green PROJECT_ID=$PROJECT_ID BUCKET_NAME=$BUCKET_NAME
-# later
-make swap-blue PROJECT_ID=$PROJECT_ID BUCKET_NAME=$BUCKET_NAME
-```
-- Optionally scale down the old MIG.
+2. Deploy:
+    make init
+    make plan
+    make up
 
-Option B — Rolling update with new instance template:
- - Build a new instance template with semantic app version (using Makefile):
-```
-make build-template PROJECT_ID=<id> ZONE=<zone> COLOR=<blue|green> APP_VERSION=v1.0.1
-```
- - Trigger a managed rolling update for the chosen MIG:
-```
-make rolling-update PROJECT_ID=<id> ZONE=<zone> COLOR=<blue|green> TEMPLATE=<created-template-name>
-```
- - Observe responses live via LB while instances rotate:
-```
-watch -n 2 'curl -s http://$(terraform output -raw lb_ip)'
-```
- Response example: `Hello from <hostname> (color: green, version: v1.0.1)`
- - After confirming, swap traffic using the two-phase warm-up target:
-```
-make swap-green
-```
+3. Get test command:
+    terraform output curl_cmd
+    or use: curl -s http://$(terraform output -raw lb_ip)
 
-Keep a health-check endpoint (e.g., /health) returning HTTP 200 for readiness checks.
+Example output:
+    curl -s http://34.119.22.81
 
-### Warm-up & Zero-Downtime Swaps
-- Two-phase swap in Makefile toggles `dual_backends` to route to both MIGs briefly (45s), then finalizes to a single backend.
-- Prevents transient 502s during backend switch and LB health propagation.
+Response includes:
+    Hello from <hostname> (color: blue, version: v1)
 
-### Observability
-- `terraform output app_version` shows the active instance template-derived version.
-- The app’s root `/` prints `color` and `version` from instance metadata (`color`, `app-version`).
+-------------------------------------------------------------------------------
 
-## Variables (examples)
-- project_id
-- region
-- zone
-- bucket_name
-- machine_type
-- instance_count
-- image (GCP image family or custom image)
-- startup_script (path to startup script to run QuizCafe and fetch quiz)
+BLUE/GREEN DEPLOYMENT WORKFLOW
 
-## Testing & verification
-- Confirm GCS file accessible from instances (startup script should `gsutil cp gs://$BUCKET/quiz.json /app/quiz.json`).
-- Simulate load, verify both versions serve expected content.
-- Verify health checks result in only healthy backends receiving traffic.
+A) Rolling Updates (gcloud-powered)
 
-## Cleanup
-```
-make destroy PROJECT_ID=$PROJECT_ID BUCKET_NAME=$BUCKET_NAME
-make clean  # remove local .terraform/ and state files
-gsutil rm -r gs://$BUCKET_NAME
-```
+1. In a separate terminal run:
+  ./view_gc_state.sh
+   to observe the status.
 
-### Full Teardown (demo labs)
-For quick, end-to-end teardown while keeping template safety during normal applies:
-```
-make destroy-all PROJECT_ID=$PROJECT_ID BUCKET_NAME=$BUCKET_NAME
-```
-This runs:
-- `state-remove-templates` (removes instance templates from Terraform state so prevent_destroy doesn’t block)
-- `destroy-safe` (destroys LB, MIGs, network, bucket, etc.)
-- `destroy-templates` (deletes templates in GCP via gcloud)
-- `clean` (removes local Terraform artifacts)
+2. Build a new instance template:
+   make build-template APP_VERSION=v2
+ 
+   This creates a uniquely timestamped template (example):
+   tf-migtest-app-v2-20251211104530
+ 
+   The make output will print a command you can use to initiate a smart rollout.
 
-## Notes & best practices
-- Use separate service accounts with least privilege for Terraform and instances.
-- Store state securely (remote backend: GCS + state locking with Cloud Storage or use Terraform Cloud).
-- Add CI/CD pipeline to automate building new instance templates and blue/green swaps.
-- Monitor costs — external load balancer and instance uptime incur charges.
+3. Update the INACTIVE MIG:
+   - Smart auto-mode:
+     make rolling-update TEMPLATE=<template-name>
 
-This README is intentionally concise; expand sections with concrete Terraform code, startup script, and CI pipeline docs for a fuller portfolio demo. HTTPS is intentionally omitted for demo simplicity; the load balancer serves HTTP on port 80.
+   - Force a specific MIG:
+     make rolling-update COLOR=blue TEMPLATE=<template-name>
+
+4. Swap traffic once validated:
+   make swap-lb
+
+-------------------------------------------------------------------------------
+
+VERIFICATION
+
+Show MIG + LB info:
+    make mig-status
+
+Manual curl test:
+    either use ./view_gc_state.sh
+    or for ip in $(gcloud compute instances list --format="value(EXTERNAL_IP)");do curl -s http://$ip;done
+    This will show you the older and newer versions of the running instances.
+
+    And to confirm LB status:
+    curl -s http://$(terraform output -raw lb_ip)
+
+-------------------------------------------------------------------------------
+
+CLEANUP
+
+Destroy all Terraform-managed resources:
+    make down
+
+Remove local Terraform artifacts:
+    make clean
+
+The GCP project itself is NOT destroyed.
+-------------------------------------------------------------------------------
+
+NOTES & BEST PRACTICES
+
+- This repo intentionally focuses on MIG + LB operations, not storage or CI/CD orchestration.
+- Rolling update strategy mirrors real production patterns where Terraform is not used for per-version template swaps.
+- HTTPS can be added via Google HTTPS LB for production.
+- Remote Terraform state (GCS backend) recommended for team environments.
+- Startup script is intentionally minimal: return hostname, color, version for visual clarity during rollouts.
+
+-------------------------------------------------------------------------------
+
+SUMMARY
+
+This is a compact, production-realistic GCP Infrastructure-as-Code demo demonstrating:
+- MIG blue/green deployments
+- Zero-downtime LB switching
+- Rolling updates with new instance templates
+- Terraform + gcloud hybrid orchestration
+- Clean, practical Makefile-powered workflows
+

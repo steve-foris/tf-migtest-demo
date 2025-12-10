@@ -17,11 +17,6 @@ variable "zone" {
   default     = "us-central1-a"
 }
 
-variable "bucket_name" {
-  description = "Name for the GCS bucket hosting quiz JSON"
-  type        = string
-}
-
 variable "machine_type" {
   description = "Instance machine type"
   type        = string
@@ -53,7 +48,7 @@ variable "image" {
 }
 
 variable "startup_script" {
-  description = "Path or content of startup script to run QuizCafe and fetch quiz"
+  description = "Path or content of startup script to run on instance boot"
   type        = string
   default     = "scripts/startup.sh"
 }
@@ -83,5 +78,5 @@ variable "prevent_destroy_templates" {
 #We should use preemtible instances for a demo.
 variable "preemptible" {
   type    = bool
-  default = true
+  default = false
 }
