@@ -1,9 +1,12 @@
 # Simple Terraform Makefile for QuizCafe blue/green
 # Variables default from terraform.tfvars, but can be overridden:
 #   make apply PROJECT_ID=... BUCKET_NAME=...
+.ONESHELL:
+.SHELLFLAGS := -eu -o pipefail -c
+
 
 .PHONY: init plan apply destroy fmt validate output clean \
-        swap-blue swap-green bootstrap-project build-template \
+        swap-blue swap-green swap-lb bootstrap-project build-template \
         rolling-update mig-status wait-for-lb
 
 # Try to read defaults from terraform.tfvars; CLI overrides still win.
@@ -169,6 +172,26 @@ swap-green:
 		$(if $(PROJECT_ID),-var="project_id=$(PROJECT_ID)") \
 		$(if $(BUCKET_NAME),-var="bucket_name=$(BUCKET_NAME)")
 
+swap-lb:
+	@current=$$(terraform output -raw active_color 2>/dev/null || echo blue); \
+	if [ "$$current" = "blue" ]; then new=green; else new=blue; fi; \
+	echo "Current active color: $$current"; \
+	echo "Switching LB to $$new (warmup phase: dual_backends=true)"; \
+	terraform apply -auto-approve \
+	  -var="dual_backends=true" \
+	  -var="active_color=$$new" \
+	  $(if $(PROJECT_ID),-var="project_id=$(PROJECT_ID)") \
+	  $(if $(BUCKET_NAME),-var="bucket_name=$(BUCKET_NAME)"); \
+	echo "Warming up $$new for 45s..."; \
+	sleep 45; \
+	echo "Finalizing switch to $$new (dual_backends=false)"; \
+	terraform apply -auto-approve \
+	  -var="dual_backends=false" \
+	  -var="active_color=$$new" \
+	  $(if $(PROJECT_ID),-var="project_id=$(PROJECT_ID)") \
+	  $(if $(BUCKET_NAME),-var="bucket_name=$(BUCKET_NAME)"); \
+	echo "✅ LB is now pointing at $$new"
+
 # Bootstrap a GCP project (NOT managed by Terraform)
 # Usage:
 #   make bootstrap-project PROJECT_ID=tf-bg-quiz BILLING_ACCOUNT=AAAAAA-BBBBBB-CCCCCC
@@ -189,36 +212,50 @@ bootstrap-project:
 		iam.googleapis.com \
 		--project="$(PROJECT_ID)"
 
-# Build a new instance template with app-version + color for a given MIG.
-# Usage:
-#   make build-template PROJECT_ID=... ZONE=us-central1-a COLOR=blue APP_VERSION=v1.2.3
+# Build a new versioned instance template for the app.
+# Usage: make build-template PROJECT_ID=... APP_VERSION=v1
 build-template:
 	@if [ -z "$(PROJECT_ID)" ]; then echo "Set PROJECT_ID"; exit 1; fi
 	@if [ -z "$(ZONE)" ]; then echo "Set ZONE"; exit 1; fi
-	@if [ -z "$(COLOR)" ]; then echo "Set COLOR=blue|green"; exit 1; fi
-	@if [ -z "$(APP_VERSION)" ]; then echo "Set APP_VERSION (e.g., v1.0.0)"; exit 1; fi
-	@mig="quizcafe-$(COLOR)-mig"; \
-	current_tpl=$$(gcloud compute instance-groups managed describe "$$mig" \
-		--project="$(PROJECT_ID)" --zone="$(ZONE)" \
-		--format='get(versions[0].instanceTemplate)'); \
-	net=$$(gcloud compute instance-templates describe "$$current_tpl" \
-		--project="$(PROJECT_ID)" \
-		--format='get(properties.networkInterfaces[0].network)'); \
-	sub=$$(gcloud compute instance-templates describe "$$current_tpl" \
-		--project="$(PROJECT_ID)" \
-		--format='get(properties.networkInterfaces[0].subnetwork)'); \
-	new_tpl="quizcafe-$(COLOR)-$$(date +%Y%m%d%H%M%S)"; \
-	echo "Creating instance template $$new_tpl for $(COLOR) with app-version=$(APP_VERSION) on network=$$net subnet=$$sub"; \
-	gcloud compute instance-templates create "$$new_tpl" \
-		--project="$(PROJECT_ID)" \
-		--machine-type="$(MACHINE_TYPE)" \
-		--metadata=app-version="$(APP_VERSION)",bucket-name="$(BUCKET_NAME)",color="$(COLOR)" \
-		--metadata-from-file=startup-script="scripts/startup.sh" \
-		--scopes=default \
-		--image-project=debian-cloud --image-family=debian-12 \
-		--network="$$net" --subnet="$$sub" \
-		--tags=quizcafe-server; \
-	echo "New template: $$new_tpl"
+	@if [ -z "$(APP_VERSION)" ]; then echo "Set APP_VERSION (e.g., v1, v2.0.1)"; exit 1; fi
+
+	name="quizcafe-app-$(APP_VERSION)-$$(date +%Y%m%d%H%M%S)"
+	echo "Creating instance template $$name in $(PROJECT_ID)"
+
+	# Use the existing blue MIG as the source of truth for network/subnet
+	base_tpl=$$(gcloud compute instance-groups managed describe quizcafe-blue-mig \
+	  --project="$(PROJECT_ID)" --zone="$(ZONE)" \
+	  --format='value(versions[0].instanceTemplate)')
+	if [ -z "$$base_tpl" ]; then
+	  echo "ERROR: Could not determine base instance template from quizcafe-blue-mig"
+	  exit 1
+	fi
+
+	net=$$(gcloud compute instance-templates describe "$$base_tpl" \
+	  --project="$(PROJECT_ID)" \
+	  --format='value(properties.networkInterfaces[0].network)')
+	sub=$$(gcloud compute instance-templates describe "$$base_tpl" \
+	  --project="$(PROJECT_ID)" \
+	  --format='value(properties.networkInterfaces[0].subnetwork)')
+	if [ -z "$$net" ] || [ -z "$$sub" ]; then
+	  echo "ERROR: Could not determine network/subnet from $$base_tpl"
+	  exit 1
+	fi
+
+	echo "DEBUG using name=$$name network=$$net subnet=$$sub machine_type=$(MACHINE_TYPE) bucket=$(BUCKET_NAME)"
+	gcloud compute instance-templates create "$$name" \
+	  --project="$(PROJECT_ID)" \
+	  --machine-type="$(MACHINE_TYPE)" \
+	  --metadata=app-version="$(APP_VERSION)",bucket-name="$(BUCKET_NAME)" \
+	  --metadata-from-file=startup-script="scripts/startup.sh" \
+	  --image-project=debian-cloud --image-family=debian-12 \
+	  --network="$$net" --subnet="$$sub" \
+	  --tags=quizcafe-server
+	echo "Created template: $$name"
+	echo "Use it with:"
+	echo "  make rolling-update PROJECT_ID=$(PROJECT_ID) ZONE=$(ZONE) COLOR=blue  TEMPLATE=$$name"
+	echo "or:"
+	echo "  make rolling-update PROJECT_ID=$(PROJECT_ID) ZONE=$(ZONE) COLOR=green TEMPLATE=$$name"
 
 # Trigger a managed rolling update on a MIG using a given template.
 # Usage:

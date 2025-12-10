@@ -11,30 +11,28 @@ locals {
   # Configure blue/green MIGs + templates
   colors = {
     blue = {
-      name_prefix        = "quizcafe-blue-"
       mig_name           = "quizcafe-blue-mig"
       base_instance_name = "quizcafe-blue"
     }
     green = {
-      name_prefix        = "quizcafe-green-"
       mig_name           = "quizcafe-green-mig"
       base_instance_name = "quizcafe-green"
     }
   }
 }
 
+
 data "google_compute_image" "debian" {
   family  = split("/", var.image)[1]
   project = split("/", var.image)[0]
 }
 
-# One instance template per color (blue/green)
-resource "google_compute_instance_template" "color" {
-  for_each    = local.colors
-  name_prefix = each.value.name_prefix
-
+# One app version template to roll out
+resource "google_compute_instance_template" "app" {
+  name_prefix  = "quizcafe-app-"
   machine_type = var.machine_type
-  tags         = ["quizcafe-server"]
+
+  tags = ["quizcafe-server"]
 
   disk {
     auto_delete  = true
@@ -56,14 +54,12 @@ resource "google_compute_instance_template" "color" {
 
   metadata_startup_script = file(var.startup_script)
 
-  # Common metadata + per-color metadata
-  metadata = merge(
-    { color = each.key },
-    { for item in local.metadata_items : item.key => item.value }
-  )
+  metadata = {
+    for item in local.metadata_items : item.key => item.value
+  }
 
   lifecycle {
-    # Safe replacement on change
+    # Safer replacement when TF ever has to change it
     create_before_destroy = true
   }
 }
@@ -91,8 +87,8 @@ resource "google_compute_instance_group_manager" "color" {
   target_size        = var.instance_count
 
   version {
-    # initial template – Terraform's "bootstrap" truth
-    instance_template = google_compute_instance_template.color[each.key].self_link
+    # Bootstrap template only – gcloud will later point this to quizcafe-app-vX-*
+    instance_template = google_compute_instance_template.app.self_link
   }
 
   named_port {
@@ -106,8 +102,7 @@ resource "google_compute_instance_group_manager" "color" {
   }
 
   lifecycle {
-    # Let gcloud change the MIG's template during rolling updates
-    # without Terraform trying to "fix" it back.
+    # Let gcloud rolling updates change the MIG version
     ignore_changes = [version]
   }
 }

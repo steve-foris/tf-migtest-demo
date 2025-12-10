@@ -14,8 +14,11 @@ locals {
 // subsequent references. Add a delay to avoid `resourceNotReady` errors
 // when creating the backend service right after the health check.
 resource "time_sleep" "wait_for_hc" {
-  depends_on      = [google_compute_health_check.http]
-  create_duration = "45s"
+  depends_on = [
+    google_compute_health_check.http,
+    google_compute_instance_group_manager.color,
+  ]
+  create_duration = "120s"
 }
 
 resource "google_compute_backend_service" "default" {
