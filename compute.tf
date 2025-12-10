@@ -41,7 +41,7 @@ resource "google_compute_instance_template" "app" {
   }
 
   scheduling {
-    preemptible         = true
+    preemptible         = var.preemptible
     automatic_restart   = false
     on_host_maintenance = "TERMINATE"
   }

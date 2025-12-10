@@ -8,5 +8,6 @@ machine_type    = "e2-micro"
 instance_count  = 2
 image           = "debian-cloud/debian-12"
 startup_script  = "scripts/startup.sh"
-max_surge       = 1
+max_surge       = 0
 max_unavailable = 0
+preemptible = true

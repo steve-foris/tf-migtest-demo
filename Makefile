@@ -17,7 +17,13 @@ ZONE            ?= $(shell sed -n 's/^zone *= *"\(.*\)"/\1/p' terraform.tfvars 2
 MACHINE_TYPE    ?= $(shell sed -n 's/^machine_type *= *"\(.*\)"/\1/p' terraform.tfvars 2>/dev/null | head -n1)
 MAX_SURGE       ?= $(shell sed -n 's/^max_surge *= *\([0-9][0-9]*\)/\1/p' terraform.tfvars 2>/dev/null | head -n1)
 MAX_UNAVAILABLE ?= $(shell sed -n 's/^max_unavailable *= *\([0-9][0-9]*\)/\1/p' terraform.tfvars 2>/dev/null | head -n1)
+PREEMPTIBLE     ?= $(shell sed -n 's/^preemptible *= *\(true\|false\)/\1/p' terraform.tfvars 2>/dev/null | head -n1)
 
+ifeq ($(PREEMPTIBLE),true)
+  PREEMPTIBLE_FLAG := --preemptible
+else
+  PREEMPTIBLE_FLAG :=
+endif
 
 init:
 	terraform init
@@ -250,7 +256,9 @@ build-template:
 	  --metadata-from-file=startup-script="scripts/startup.sh" \
 	  --image-project=debian-cloud --image-family=debian-12 \
 	  --network="$$net" --subnet="$$sub" \
-	  --tags=quizcafe-server
+	  --tags=quizcafe-server \
+	  $(PREEMPTIBLE_FLAG)
+	  
 	echo "Created template: $$name"
 	echo "Use it with:"
 	echo "  make rolling-update PROJECT_ID=$(PROJECT_ID) ZONE=$(ZONE) COLOR=blue  TEMPLATE=$$name"

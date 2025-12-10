@@ -79,3 +79,9 @@ variable "prevent_destroy_templates" {
   type        = bool
   default     = false
 }
+
+#We should use preemtible instances for a demo.
+variable "preemptible" {
+  type    = bool
+  default = true
+}
