@@ -80,3 +80,8 @@ variable "preemptible" {
   type    = bool
   default = false
 }
+
+variable "tfstate_bucket" {
+  description = "GCS bucket name to store remote Terraform state"
+  type        = string
+}

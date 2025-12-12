@@ -13,7 +13,7 @@ No buckets, no static assets - this demo focuses purely on compute + LB behavior
 
 -------------------------------------------------------------------------------
 
-ARCHITECTURE OVERVIEW
+# ARCHITECTURE OVERVIEW
 
 This project deploys:
 
@@ -31,7 +31,7 @@ This mirrors real production environments, where Terraform defines the topology 
 
 -------------------------------------------------------------------------------
 
-REPO LAYOUT
+# REPO LAYOUT
 .
 ├── main.tf                provider + global settings
 ├── network.tf             VPC, subnet, firewall rules
@@ -44,7 +44,7 @@ REPO LAYOUT
 ├── modules/               optional module stubs
 └── view_gc_state.sh       A tool to monitor state of GCP resources.
 
-MAKEFILE FEATURES
+# MAKEFILE FEATURES
 - make init / plan / up / down / clean
 - make swap-lb: smart blue/green LB switch with warm-up
 - make build-template APP_VERSION=vN
@@ -55,7 +55,7 @@ MAKEFILE FEATURES
 
 -------------------------------------------------------------------------------
 
-PREREQUISITES
+# PREREQUISITES
 - A GCP account with billing enabled
 - gcloud SDK installed and authenticated
 - Terraform v1.x
@@ -73,7 +73,7 @@ Enable APIs:
 
 -------------------------------------------------------------------------------
 
-BOOTSTRAP A FRESH PROJECT
+# BOOTSTRAP A FRESH PROJECT
 Use Makefile to create + prepare a new project:
     make bootstrap-project PROJECT_ID=tf-migtest-demo BILLING_ACCOUNT=AAAAAA-BBBBBB-CCCCCC
 
@@ -81,7 +81,7 @@ This creates the project, links billing, and enables required APIs.
 
 -------------------------------------------------------------------------------
 
-QUICK START
+# QUICK START
 
 1. Configure terraform.tfvars:
 project_id    = "tf-migtest-demo"
@@ -135,7 +135,7 @@ A) Rolling Updates (gcloud-powered)
 
 -------------------------------------------------------------------------------
 
-VERIFICATION
+# VERIFICATION
 
 Show MIG + LB info:
     make mig-status
@@ -150,7 +150,7 @@ Manual curl test:
 
 -------------------------------------------------------------------------------
 
-CLEANUP
+# CLEANUP
 
 Destroy all Terraform-managed resources:
     make down

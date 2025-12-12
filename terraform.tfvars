@@ -10,3 +10,4 @@ startup_script  = "scripts/startup.sh"
 max_surge       = 0
 max_unavailable = 1
 preemptible = false
+tfstate_bucket = "tf-migtest-demo-tfstate"

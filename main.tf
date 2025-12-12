@@ -18,3 +18,10 @@ provider "google" {
   region  = var.region
   zone    = var.zone
 }
+
+terraform {
+  backend "gcs" {
+    bucket = "tf-migtest-state"
+    prefix = "terraform/state"
+  }
+}

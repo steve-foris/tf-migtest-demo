@@ -1,4 +1,4 @@
-# Simple Terraform Makefile for ingra example blue/green GCP MIG setup
+# Simple Terraform Makefile for infra example blue/green GCP MIG setup
 # Variables default from terraform.tfvars, but can be overridden via CLI.
 
 .ONESHELL:
@@ -7,7 +7,7 @@
 
 .PHONY: init plan up down fmt validate output clean \
         swap-blue swap-green swap-lb bootstrap-project build-template \
-        rolling-update mig-status wait-for-lb
+        rolling-update mig-status wait-for-lb create-tfstate-bucket
 
 # Try to read defaults from terraform.tfvars; CLI overrides still win.
 PROJECT_ID      ?= $(shell sed -n 's/^project_id *= *"\(.*\)"/\1/p' terraform.tfvars 2>/dev/null | head -n1)
@@ -17,6 +17,8 @@ MACHINE_TYPE    ?= $(shell sed -n 's/^machine_type *= *"\(.*\)"/\1/p' terraform.
 MAX_SURGE       ?= $(shell sed -n 's/^max_surge *= *\([0-9][0-9]*\)/\1/p' terraform.tfvars 2>/dev/null | head -n1)
 MAX_UNAVAILABLE ?= $(shell sed -n 's/^max_unavailable *= *\([0-9][0-9]*\)/\1/p' terraform.tfvars 2>/dev/null | head -n1)
 PREEMPTIBLE     ?= $(shell sed -n 's/^preemptible *= *\(true\|false\)/\1/p' terraform.tfvars 2>/dev/null | head -n1)
+TFSTATE_BUCKET  ?= $(shell sed -n 's/^tfstate_bucket *= *"\(.*\)"/\1/p' terraform.tfvars 2>/dev/null | head -n1)
+
 
 ifeq ($(PREEMPTIBLE),true)
   PREEMPTIBLE_FLAG := --preemptible
@@ -24,8 +26,34 @@ else
   PREEMPTIBLE_FLAG :=
 endif
 
-init:
-	terraform init
+# Ensure remote state bucket exists before terraform init
+create-tfstate-bucket:
+	@if [ -z "$(PROJECT_ID)" ]; then \
+		echo "Set project_id in terraform.tfvars or PROJECT_ID=<id> on the CLI"; exit 1; \
+	fi
+	@if [ -z "$(REGION)" ]; then \
+		echo "Set region in terraform.tfvars or REGION=<region> on the CLI"; exit 1; \
+	fi
+	@if [ -z "$(TFSTATE_BUCKET)" ]; then \
+		echo 'Set tfstate_bucket in terraform.tfvars (e.g. tf-migtest-demo-tfstate)'; exit 1; \
+	fi
+
+	@echo "Ensuring Terraform state bucket gs://$(TFSTATE_BUCKET) exists in $(REGION) for project $(PROJECT_ID)..."
+
+	@if gsutil ls -b "gs://$(TFSTATE_BUCKET)" >/dev/null 2>&1; then \
+		echo "✔ Bucket gs://$(TFSTATE_BUCKET) already exists"; \
+	else \
+		echo "⚙ Creating bucket: gs://$(TFSTATE_BUCKET)"; \
+		gsutil mb -p "$(PROJECT_ID)" -l "$(REGION)" "gs://$(TFSTATE_BUCKET)"; \
+		echo "⚙ Enabling versioning on gs://$(TFSTATE_BUCKET)"; \
+		gsutil versioning set on "gs://$(TFSTATE_BUCKET)"; \
+	fi
+
+
+init: create-tfstate-bucket
+	terraform init \
+      -backend-config="bucket=$(TFSTATE_BUCKET)" \
+      -backend-config="prefix=tf-migtest-demo/state"
 
 plan:
 	@if [ -n "$(PROJECT_ID)" ]; then
@@ -35,7 +63,7 @@ plan:
 	terraform plan \
 		$(if $(PROJECT_ID),-var="project_id=$(PROJECT_ID)")
 
-up:
+up: init
 	terraform apply -auto-approve \
 		$(if $(PROJECT_ID),-var="project_id=$(PROJECT_ID)")
 	$(MAKE) wait-for-lb
@@ -131,7 +159,7 @@ destroy-verify:
 		echo "✔ No instance templates found."
 	fi
 
-	# Load balancer forwarding rules
+    # Load balancer forwarding rules
 	if gcloud compute forwarding-rules list --project=$(PROJECT_ID) --global --format='value(name)' | grep . ; then
 		echo "❌ Forwarding rules still exist!"
 		exit 1
@@ -139,10 +167,9 @@ destroy-verify:
 		echo "✔ No forwarding rules found."
 	fi
 
-	# Storage buckets
+    # Storage buckets
 	if gsutil ls -p $(PROJECT_ID) | grep gs:// ; then
-		echo "❌ One or more buckets still exist!"
-		exit 1
+		echo "⚠️ Buckets still exist (expected if using remote Terraform state)."
 	else
 		echo "✔ No buckets found."
 	fi
