@@ -2,7 +2,7 @@
 
 output "lb_ip" {
   description = "External IP of HTTP load balancer"
-  value       = google_compute_global_forwarding_rule.http.ip_address
+  value       = google_compute_forwarding_rule.http.ip_address
 }
 
 output "app_template_name" {
@@ -25,5 +25,5 @@ output "active_color" {
 
 output "curl_cmd" {
   description = "Handy curl command for testing the load balancer"
-  value       = "curl -s http://${google_compute_global_forwarding_rule.http.ip_address}"
+  value       = "curl -s http://${google_compute_forwarding_rule.http.ip_address}"
 }

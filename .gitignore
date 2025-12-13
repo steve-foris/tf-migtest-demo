@@ -16,5 +16,5 @@ override.tf.json
 terraform.rc
 
 #Ignore .vscode/
-.vscode/*
+.vscode/
 workworkspace.code-workspace

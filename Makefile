@@ -4,7 +4,6 @@
 .ONESHELL:
 .SHELLFLAGS := -eu -o pipefail -c
 
-
 .PHONY: init plan up down fmt validate output clean \
         swap-blue swap-green swap-lb bootstrap-project build-template \
         rolling-update mig-status wait-for-lb create-tfstate-bucket
@@ -49,7 +48,6 @@ create-tfstate-bucket:
 		gsutil versioning set on "gs://$(TFSTATE_BUCKET)"; \
 	fi
 
-
 init: create-tfstate-bucket
 	terraform init \
       -backend-config="bucket=$(TFSTATE_BUCKET)" \
@@ -73,29 +71,37 @@ output:
 	terraform output
 
 wait-for-lb:
-	@echo "Waiting for load balancer to become ready..."
-	ip=$$(terraform output -raw lb_ip 2>/dev/null || true)
-	if [ -z "$$ip" ]; then
-		echo "❌ lb_ip output not available. Did terraform apply succeed and define output \"lb_ip\"?"
-		exit 1
-	fi
-
-	echo "Using LB IP: $$ip"
-	for i in $$(seq 1 30); do
-		status=$$(curl -s -o /dev/null -w "%{http_code}" http://$$ip/ || true)
-		if [ "$$status" = "200" ]; then
-			echo "✅ Load balancer is responding with HTTP 200 after $$i checks"
-			echo "Response:"
-			curl -s http://$$ip/ || true
-			echo
-			echo "🎉 Build complete: $(PROJECT_ID) is up behind the LB."
-			exit 0
-		fi
-		echo "[$$i] LB not ready yet (status=$$status), waiting 10s..."
-		sleep 10
-	done
-
-	echo "❌ LB did not become ready within the timeout."
+	@echo "Waiting for load balancer to become stable..."
+	ip=$$(terraform output -raw lb_ip 2>/dev/null || true); \
+	if [ -z "$$ip" ]; then \
+		echo "❌ lb_ip output not available."; exit 1; \
+	fi; \
+	expected="$${EXPECTED_COLOR:-}"; \
+	echo "Using LB IP: $$ip"; \
+	if [ -n "$$expected" ]; then echo "Expecting color: $$expected"; fi; \
+	for i in $$(seq 1 90); do \
+		body=$$(curl -s --max-time 3 http://$$ip/ || true); \
+		status=$$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://$$ip/ || true); \
+		ok=0; \
+		if [ "$$status" = "200" ] && echo "$$body" | grep -q "Hello from"; then \
+			ok=1; \
+			if [ -n "$$expected" ] && ! echo "$$body" | grep -q "color: $$expected"; then \
+				ok=0; \
+			fi; \
+		fi; \
+		if [ "$$ok" = "1" ]; then \
+			echo "✅ LB is serving expected content after $$i checks"; \
+			echo "$$body"; \
+			exit 0; \
+		fi; \
+		if echo "$$body" | grep -qi "no healthy upstream"; then \
+			echo "[$$i] 503 no healthy upstream, waiting 10s..."; \
+		else \
+			echo "[$$i] Not stable yet (status=$$status), waiting 10s..."; \
+		fi; \
+		sleep 10; \
+	done; \
+	echo "❌ LB did not stabilize within the timeout."; \
 	exit 1
 
 down:
@@ -189,30 +195,23 @@ clean:
 	@rm -f crash.log
 
 swap-lb:
-	@current=$$(terraform output -raw active_color 2>/dev/null || echo blue)
-	@if [ "$$current" = "blue" ]; then
-		new=green
-	else
-		new=blue
-	fi
-
-	echo "Current active color: $$current"
-	echo "Switching LB to $$new (warmup phase: dual_backends=true)"
-
+	@current=$$(terraform output -raw active_color 2>/dev/null || echo blue); \
+	if [ "$$current" = "blue" ]; then new=green; else new=blue; fi; \
+	echo "Current active color: $$current"; \
+	echo "Switching LB to $$new (warmup phase: dual_backends=true)"; \
 	terraform apply -auto-approve \
 		-var="dual_backends=true" \
 		-var="active_color=$$new" \
-		$(if $(PROJECT_ID),-var="project_id=$(PROJECT_ID)") \
-
-	echo "Warming up $$new for 45s..."
-	sleep 45
-
-	echo "Finalizing switch to $$new (dual_backends=false)"
+		$(if $(PROJECT_ID),-var="project_id=$(PROJECT_ID)") ; \
+	echo "Warming up $$new (waiting until LB actually serves $$new)..."; \
+	$(MAKE) wait-for-lb EXPECTED_COLOR=$$new; \
+	echo "Finalizing switch to $$new (dual_backends=false)"; \
 	terraform apply -auto-approve \
 		-var="dual_backends=false" \
 		-var="active_color=$$new" \
-		$(if $(PROJECT_ID),-var="project_id=$(PROJECT_ID)") \
-
+		$(if $(PROJECT_ID),-var="project_id=$(PROJECT_ID)") ; \
+	echo "Waiting for post-cutover convergence..."; \
+	$(MAKE) wait-for-lb EXPECTED_COLOR=$$new; \
 	echo "✅ LB is now pointing at $$new"
 
 # Bootstrap a GCP project (NOT managed by Terraform)
@@ -236,7 +235,7 @@ bootstrap-project:
 		--project="$(PROJECT_ID)"
 
 # Build a new versioned instance template for the app.
-# Usage: make build-template PROJECT_ID=... APP_VERSION=v1
+# Usage: make build-template APP_VERSION=v1
 build-template:
 	@if [ -z "$(PROJECT_ID)" ]; then echo "Set PROJECT_ID"; exit 1; fi
 	@if [ -z "$(ZONE)" ]; then echo "Set ZONE"; exit 1; fi

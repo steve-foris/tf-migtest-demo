@@ -9,14 +9,23 @@ variable "region" {
   description = "GCP region"
   type        = string
   default     = "us-central1"
+
+  validation {
+    condition     = can(regex("^[a-z]+-[a-z0-9]+[0-9]$", var.region))
+    error_message = "region must look like us-central1"
+  }
 }
 
 variable "zone" {
   description = "GCP zone"
   type        = string
   default     = "us-central1-a"
-}
 
+  validation {
+    condition     = startswith(var.zone, "${var.region}-")
+    error_message = "zone must be inside region (e.g., region=us-central1, zone=us-central1-a)"
+  }
+}
 variable "machine_type" {
   description = "Instance machine type"
   type        = string

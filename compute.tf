@@ -14,6 +14,14 @@ locals {
   }
 }
 
+resource "google_compute_health_check" "mig_autoheal" {
+  name = "migtest-mig-autoheal-hc"
+
+  http_health_check {
+    port         = 80
+    request_path = "/"
+  }
+}
 
 data "google_compute_image" "debian" {
   family  = split("/", var.image)[1]
@@ -21,7 +29,7 @@ data "google_compute_image" "debian" {
 }
 
 resource "google_compute_instance_template" "app" {
-  name  = "migtest-app-base"
+  name         = "migtest-app-base"
   machine_type = var.machine_type
 
   tags = ["migtest-app-server"]
@@ -58,9 +66,10 @@ resource "google_compute_instance_template" "app" {
   }
 }
 
+resource "google_compute_region_health_check" "http" {
+  name   = "migtest-app-hc"
+  region = var.region
 
-resource "google_compute_health_check" "http" {
-  name                = "migtest-app-hc"
   check_interval_sec  = 5
   timeout_sec         = 5
   healthy_threshold   = 2
@@ -92,7 +101,7 @@ resource "google_compute_instance_group_manager" "color" {
   }
 
   auto_healing_policies {
-    health_check      = google_compute_health_check.http.self_link
+    health_check      = google_compute_region_health_check.http.self_link
     initial_delay_sec = 60
   }
 

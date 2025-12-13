@@ -1,7 +1,8 @@
-# tf-migtest-demo-terraform-bluegreen
+# Terraform GCP MIG Blue/Green deployment
 
-A clean, production-style GCP + Terraform blue/green Managed Instance Group (MIG) deployment demo. This project showcases:
+A clean, production-style GCP + Terraform blue/green Managed Instance Group (MIG) deployment demo.
 
+This project showcases:
 - Infrastructure-as-Code with Terraform
 - GCP Managed Instance Groups with rolling updates
 - External HTTP Load Balancer with health checks
@@ -9,19 +10,19 @@ A clean, production-style GCP + Terraform blue/green Managed Instance Group (MIG
 - Automated instance-template versioning via Makefile + gcloud
 - Realistic deployment workflow similar to production systems
 
-No buckets, no static assets - this demo focuses purely on compute + LB behavior, which keeps the architecture clean and easy to reason about.
+This demo focuses purely on compute + LB behavior, which keeps the architecture clean and easy to reason about.
+It also keeps best practices in mind and keeping costs low.
 
 -------------------------------------------------------------------------------
 
 # ARCHITECTURE OVERVIEW
 
 This project deploys:
-
 - One Terraform-managed baseline instance template
 - Two Managed Instance Groups:
     migtest-blue-mig
     migtest-green-mig
-- Global HTTP Load Balancer with forwarding rule and backend service
+- Regional external Application Load Balancer
 - Health check to ensure LB only routes traffic to healthy instances
 - active_color variable determines which MIG receives traffic
 - Blue/green swap performed via Terraform + Makefile automation
@@ -32,17 +33,24 @@ This mirrors real production environments, where Terraform defines the topology 
 -------------------------------------------------------------------------------
 
 # REPO LAYOUT
+```text
 .
-├── main.tf                provider + global settings
-├── network.tf             VPC, subnet, firewall rules
-├── compute.tf             instance templates, MIG configs
-├── lb.tf                  health check, backend, forwarding rule
-├── variables.tf           configurable inputs
-├── outputs.tf             LB IP, curl command, active_color, MIG template names
-├── scripts/startup.sh     simple HTTP server (prints hostname, color, version)
-├── Makefile               automation for deploy, swap, rolling updates
-├── modules/               optional module stubs
-└── view_gc_state.sh       A tool to monitor state of GCP resources.
+├── main.tf                — provider & global settings (provider config, project/region defaults, service accounts)
+├── network.tf             — VPC, subnet, routes, and firewall rules used by MIGs and LB
+├── compute.tf             — instance templates, managed instance group (MIG) definitions for blue & green
+├── lb.tf                  — health check, backend service, backend buckets/groups, forwarding rule (HTTP LB)
+├── variables.tf           — input variables and defaults for project, region, sizes, colors, etc.
+├── outputs.tf             — exposed outputs: LB IP, curl command, active_color, MIG/template names
+├── terraform.tfvars       — example variable values (project_id, zone, machine_type, preemptible, ...)
+├── Makefile               — automation for init/plan/up/down, build-template, rolling-update, swap-lb, bootstrap
+├── README.md              — repo overview, architecture, quickstart, workflow, and cleanup instructions
+├── scripts/
+│   └── startup.sh         — simple HTTP server startup script (prints hostname, color, version)
+├── modules/
+│   └── README.md          — module stubs, usage notes and extension guidance
+└── utils/
+    ├── gcp_audit.sh       — helper to audit/collect basic GCP resource info
+    └── view_gc_state.sh   — real-time helper to monitor MIG/LB instance state during rollouts
 
 # MAKEFILE FEATURES
 - make init / plan / up / down / clean
@@ -52,7 +60,7 @@ This mirrors real production environments, where Terraform defines the topology 
     (auto-detects active MIG; updates the inactive side)
 - make bootstrap-project PROJECT_ID=... BILLING_ACCOUNT=...
     creates new GCP project, links billing, enables APIs
-
+```
 -------------------------------------------------------------------------------
 
 # PREREQUISITES
@@ -69,51 +77,60 @@ This mirrors real production environments, where Terraform defines the topology 
     roles/iam.serviceAccountUser
 
 Enable APIs:
+```shell
     gcloud services enable compute.googleapis.com iam.googleapis.com
-
+```
 -------------------------------------------------------------------------------
 
 # BOOTSTRAP A FRESH PROJECT
 Use Makefile to create + prepare a new project:
+```shell
     make bootstrap-project PROJECT_ID=tf-migtest-demo BILLING_ACCOUNT=AAAAAA-BBBBBB-CCCCCC
-
+```
 This creates the project, links billing, and enables required APIs.
 
 -------------------------------------------------------------------------------
 
 # QUICK START
-
+After bootstrap step above.
+```text
 1. Configure terraform.tfvars:
 project_id    = "tf-migtest-demo"
-region        = "us-west1"
-zone          = "us-west1-b"
+region        = "us-central1"
+zone          = "us-central1-a"
 machine_type  = "e2-micro"
 preemptible   = true
-
+```
 2. Deploy:
+```shell
     make init
     make plan
     make up
+```
 
 3. Get test command:
+```shell
     terraform output curl_cmd
-    or use: curl -s http://$(terraform output -raw lb_ip)
+    or use: 
+    curl -s http://$(terraform output -raw lb_ip)
+```
 
 Example output:
+```shell
     curl -s http://34.119.22.81
-
+```
 Response includes:
+```shell
     Hello from <hostname> (color: blue, version: v1)
-
+```
 -------------------------------------------------------------------------------
 
-BLUE/GREEN DEPLOYMENT WORKFLOW
+# BLUE/GREEN DEPLOYMENT WORKFLOW
+```text
+Rolling Updates (gcloud-powered)
 
-A) Rolling Updates (gcloud-powered)
-
-1. In a separate terminal run:
-  ./view_gc_state.sh
-   to observe the status.
+1. To observe the status, in a separate terminal run:
+   utils/view_gc_state.sh
 
 2. Build a new instance template:
    make build-template APP_VERSION=v2
@@ -124,7 +141,7 @@ A) Rolling Updates (gcloud-powered)
    The make output will print a command you can use to initiate a smart rollout.
 
 3. Update the INACTIVE MIG:
-   - Smart auto-mode:
+   - Smart auto-mode (recommended):
      make rolling-update TEMPLATE=<template-name>
 
    - Force a specific MIG:
@@ -132,11 +149,11 @@ A) Rolling Updates (gcloud-powered)
 
 4. Swap traffic once validated:
    make swap-lb
-
+```
 -------------------------------------------------------------------------------
 
 # VERIFICATION
-
+```text
 Show MIG + LB info:
     make mig-status
 
@@ -147,16 +164,24 @@ Manual curl test:
 
     And to confirm LB status:
     curl -s http://$(terraform output -raw lb_ip)
-
+```
 -------------------------------------------------------------------------------
 
 # CLEANUP
-
 Destroy all Terraform-managed resources:
+```shell
     make down
+```
 
 Remove local Terraform artifacts:
+```shell
     make clean
+```
+
+You can also verify what billable objects may still be in the project with.
+```shell
+utils/gcp_audit.sh
+```
 
 The GCP project itself is NOT destroyed.
 -------------------------------------------------------------------------------
@@ -168,6 +193,9 @@ NOTES & BEST PRACTICES
 - HTTPS can be added via Google HTTPS LB for production.
 - Remote Terraform state (GCS backend) recommended for team environments.
 - Startup script is intentionally minimal: return hostname, color, version for visual clarity during rollouts.
+- No CI/CD is involved — this repo focuses on infrastructure behavior, not pipelines.
+- Load balancer switching is handled declaratively via Terraform, orchestrated by Make.
+- Designed for short-lived demos and testing, don’t leave it running unattended.
 
 -------------------------------------------------------------------------------
 
@@ -179,4 +207,4 @@ This is a compact, production-realistic GCP Infrastructure-as-Code demo demonstr
 - Rolling updates with new instance templates
 - Terraform + gcloud hybrid orchestration
 - Clean, practical Makefile-powered workflows
-
+-------------------------------------------------------------------------------

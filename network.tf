@@ -42,5 +42,17 @@ resource "google_compute_firewall" "allow_lb_health" {
   source_ranges = [
     "35.191.0.0/16",
     "130.211.0.0/22",
+    google_compute_subnetwork.proxy_only.ip_cidr_range,
   ]
+}
+
+# Proxy-only subnet required for Regional External Application LB (EXTERNAL_MANAGED)
+resource "google_compute_subnetwork" "proxy_only" {
+  name          = "migtest-proxy-only"
+  region        = var.region
+  network       = google_compute_network.vpc.id
+  ip_cidr_range = "10.10.1.0/24"
+
+  purpose = "REGIONAL_MANAGED_PROXY"
+  role    = "ACTIVE"
 }

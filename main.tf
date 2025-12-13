@@ -1,4 +1,4 @@
-// Placeholder: provider and global resources will be defined here.
+# provider and global resources 
 terraform {
   required_version = ">= 1.0.0"
   required_providers {
