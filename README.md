@@ -1,7 +1,7 @@
 # Terraform GCP MIG Blue/Green deployment
+This repository (tf-migtest-demo) implements a blue/green Managed Instance Group deployment on GCP.
 
 A clean, production-style GCP + Terraform blue/green Managed Instance Group (MIG) deployment demo.
-
 This project showcases:
 - Infrastructure-as-Code with Terraform
 - GCP Managed Instance Groups with rolling updates
@@ -22,13 +22,15 @@ This project deploys:
 - Two Managed Instance Groups:
     migtest-blue-mig
     migtest-green-mig
-- Regional external Application Load Balancer
+- Regional external Application Load Balancer (EXTERNAL_MANAGED)
 - Health check to ensure LB only routes traffic to healthy instances
 - active_color variable determines which MIG receives traffic
 - Blue/green swap performed via Terraform + Makefile automation
 - Rolling updates performed via gcloud using newly-built templates
 
 This mirrors real production environments, where Terraform defines the topology and external tooling performs version rollouts.
+
+Costs are workload-dependent; this project is intended for short-lived testing and teardown, not sustained production use.
 
 -------------------------------------------------------------------------------
 
